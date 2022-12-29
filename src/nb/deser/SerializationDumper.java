@@ -9,6 +9,7 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedList;
 import nb.deser.support.ClassDataDesc;
 import nb.deser.support.ClassDetails;
@@ -46,9 +47,10 @@ public class SerializationDumper {
 		//Validate number of command line args
 		if(args.length == 0 || args.length > 3) {
 			System.out.println("Usage:");
-			System.out.println("\tSerializationDumper <hex-ascii-data>");
+			System.out.println("\tSerializationDumper <hex-ascii-data> | <base64-encoded-data>");
 			System.out.println("\tSerializationDumper -f <file-containing-hex-ascii>");
 			System.out.println("\tSerializationDumper -r <file-containing-raw-data>");
+			System.out.println("\tSerializationDumper -b <file-containing-base64-encoded>");
 			System.out.println("");
 			System.out.println("Rebuild a dumped stream:");
 			System.out.println("\tSerializationDumper -b <input-file> <output-file>");
@@ -57,25 +59,39 @@ public class SerializationDumper {
 		
 		//A single argument must be a hex-ascii encoded byte string
 		if(args.length == 1) {
+			boolean tryBase64 = false;
 			//Validation
 			if(args[0].length() % 2 == 1) {
-				System.out.println("Error: Data encoded as hex and passed on the command line must have a length that is a multiple of 2.");
-				return;
+				tryBase64 = true;
+			}else{
+				//Load the data into the serialization dumper
+				for(int i = 0; i < args[0].length() / 2; ++i) {
+					//Validation
+					if(Character.digit(args[0].charAt(i * 2), 16) == -1 || Character.digit(args[0].charAt(i * 2 + 1), 16) == -1) {
+						tryBase64 = true;
+						break;
+					}
+
+					sd._data.add((byte)(
+							(Character.digit(args[0].charAt(i * 2), 16) << 4) +
+							(Character.digit(args[0].charAt(i * 2 + 1), 16))
+					));
+				}
 			}
-			
-			//Load the data into the serialization dumper
-			for(int i = 0; i < args[0].length() / 2; ++i) {
-				//Validation
-				if(Character.digit(args[0].charAt(i * 2), 16) == -1 || Character.digit(args[0].charAt(i * 2 + 1), 16) == -1) {
-					System.out.println("Error: Data encoded as hex and passed on the command line must only contain hex digits.");
+
+			if(tryBase64){
+				try {
+					sd = new SerializationDumper();
+					byte[] data = Base64.getDecoder().decode(args[0]);
+					for(int i = 0; i < data.length; ++i) {
+						sd._data.add(data[i]);
+					}
+				}catch (IllegalArgumentException e){
+					System.out.println("Error: The input data is neither hex nor base64 encoded.");
 					return;
 				}
-				
-				sd._data.add((byte)(
-					(Character.digit(args[0].charAt(i * 2), 16) << 4) +
-					(Character.digit(args[0].charAt(i * 2 + 1), 16))
-				));
 			}
+
 		} else if(args.length == 3 && args[0].toLowerCase().equals("-b")) {
 			//Three arguments starting with -r means we're rebuilding a stream from a dump
 			sd.rebuildStream(args[1], args[2]);
@@ -103,6 +119,18 @@ public class SerializationDumper {
 					sd._data.add(fileContents[i]);
 				}
 			} else if(args[0].toLowerCase().equals("-b")) {
+				//Base64 encoded
+				try {
+					byte[] data = Base64.getDecoder().decode(fileContents);
+					for(int i = 0; i < data.length; ++i) {
+						sd._data.add(data[i]);
+					}
+				}catch (IllegalArgumentException e){
+					System.out.println("Error: The file cannot be decoded as base64.");
+					return;
+				}
+			}
+			else if(args[0].toLowerCase().equals("-b")) {
 				System.out.println("Error: The -b option requires two parameters, the input file and the output file.");
 				return;
 			}
